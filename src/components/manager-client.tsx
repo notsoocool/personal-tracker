@@ -136,7 +136,6 @@ export function ManagerClient({
             <CardContent>
               <form
                 className="space-y-4"
-                encType="multipart/form-data"
                 id="review-form"
                 action={(fd) => {
                   setMessage(null);
