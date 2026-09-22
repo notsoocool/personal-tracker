@@ -2,11 +2,10 @@
 
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import {
-  managerAddReviewAction,
-  managerAddTodoAction,
   managerDeleteInboxAction,
   managerUpdateInboxAction,
 } from "@/lib/actions";
+import { ManagerSmartCompose } from "@/components/manager-smart-compose";
 import type { InboxItem, Plan, Task, TaskCounts } from "@/lib/types";
 import { PlatformChip } from "@/components/platform-picker";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +29,7 @@ type Props = {
   plans: Plan[];
   tasks: Task[];
   counts: TaskCounts;
+  aiEnabled: boolean;
 };
 
 function countForPlan(tasks: Task[], planId: string): TaskCounts {
@@ -47,6 +47,7 @@ export function ManagerClient({
   plans,
   tasks,
   counts,
+  aiEnabled,
 }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -154,114 +155,20 @@ export function ManagerClient({
         ))}
       </section>
 
-      <Tabs defaultValue="todo" className="enter-up enter-up-delay-3">
+      <Tabs defaultValue="ask" className="enter-up enter-up-delay-3">
         <TabsList className="glass-panel">
-          <TabsTrigger value="todo">Add todo</TabsTrigger>
-          <TabsTrigger value="review">Add review</TabsTrigger>
+          <TabsTrigger value="ask">Drop an ask</TabsTrigger>
           <TabsTrigger value="progress">Inbox & plans</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="todo" className="mt-4">
-          <article className="glass-panel rounded-2xl p-5">
-            <h2 className="font-display text-lg font-semibold">Add a todo</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Lands in the owner inbox for {projectName}.
-            </p>
-            <form
-              className="mt-4 space-y-4"
-              action={(fd) => {
-                setMessage(null);
-                setError(null);
-                startTransition(async () => {
-                  const result = await managerAddTodoAction(token, fd);
-                  if (result?.error) {
-                    setError(result.error);
-                    return;
-                  }
-                  setMessage("Todo added.");
-                  (
-                    document.getElementById(
-                      "todo-form",
-                    ) as HTMLFormElement | null
-                  )?.reset();
-                });
-              }}
-              id="todo-form"
-            >
-              <div className="space-y-2">
-                <Label htmlFor="todo-title">Title</Label>
-                <Input id="todo-title" name="title" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="todo-notes">Notes (optional)</Label>
-                <Textarea id="todo-notes" name="notes" rows={3} />
-              </div>
-              <Button type="submit" disabled={pending}>
-                {pending ? "Sending…" : "Submit todo"}
-              </Button>
-            </form>
-          </article>
-        </TabsContent>
-
-        <TabsContent value="review" className="mt-4">
-          <article className="glass-panel rounded-2xl p-5">
-            <h2 className="font-display text-lg font-semibold">Add a review</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Include the exact page URL. Screenshot optional.
-            </p>
-            <form
-              className="mt-4 space-y-4"
-              id="review-form"
-              action={(fd) => {
-                setMessage(null);
-                setError(null);
-                startTransition(async () => {
-                  const result = await managerAddReviewAction(token, fd);
-                  if (result?.error) {
-                    setError(result.error);
-                    return;
-                  }
-                  setMessage("Review added.");
-                  (
-                    document.getElementById(
-                      "review-form",
-                    ) as HTMLFormElement | null
-                  )?.reset();
-                });
-              }}
-            >
-              <div className="space-y-2">
-                <Label htmlFor="review-title">Title</Label>
-                <Input id="review-title" name="title" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="review-url">Page / section URL</Label>
-                <Input
-                  id="review-url"
-                  name="pageUrl"
-                  type="url"
-                  placeholder="https://…"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="review-notes">Notes</Label>
-                <Textarea id="review-notes" name="notes" rows={4} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="review-shot">Screenshot (optional)</Label>
-                <Input
-                  id="review-shot"
-                  name="screenshot"
-                  type="file"
-                  accept="image/*"
-                />
-              </div>
-              <Button type="submit" disabled={pending}>
-                {pending ? "Sending…" : "Submit review"}
-              </Button>
-            </form>
-          </article>
+        <TabsContent value="ask" className="mt-4">
+          <ManagerSmartCompose
+            token={token}
+            projectName={projectName}
+            aiEnabled={aiEnabled}
+            onMessage={setMessage}
+            onError={setError}
+          />
         </TabsContent>
 
         <TabsContent value="progress" className="mt-4 space-y-4">

@@ -27,6 +27,7 @@ export default async function ManagerPage({ params }: Props) {
   const plans = listPlans(project.id);
   const tasks = listTasks(project.id);
   const counts = taskCounts(project.id);
+  const aiEnabled = Boolean(process.env.OPENAI_API_KEY?.trim());
 
   return (
     <main className="flex flex-1 flex-col">
@@ -37,6 +38,7 @@ export default async function ManagerPage({ params }: Props) {
         plans={plans}
         tasks={tasks}
         counts={counts}
+        aiEnabled={aiEnabled}
       />
     </main>
   );
