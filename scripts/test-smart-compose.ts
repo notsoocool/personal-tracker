@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { parseShapedInboxPayload } from "../src/lib/openai-shape";
 import { draftFromCompose } from "../src/lib/smart-heuristics";
 import {
   FLIT_SMART_TEMPLATES,
@@ -29,5 +30,22 @@ assert.match(todoDraft.title, /export|CSV|rooms/i);
 
 const emptyish = draftFromCompose({ text: "   " });
 assert.equal(emptyish.title, "New ask");
+
+assert.deepEqual(
+  parseShapedInboxPayload({
+    type: "review",
+    title: "Broken save",
+    notes: "Settings do not save",
+    pageUrl: "https://x.test/settings",
+  }),
+  {
+    type: "review",
+    title: "Broken save",
+    notes: "Settings do not save",
+    pageUrl: "https://x.test/settings",
+  },
+);
+assert.equal(parseShapedInboxPayload({ type: "todo", title: "" }), null);
+assert.equal(parseShapedInboxPayload({ type: "nope", title: "x" }), null);
 
 console.log("smart-compose tests passed (templates + heuristics)");
