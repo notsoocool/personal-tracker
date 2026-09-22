@@ -22,6 +22,8 @@ assert.match(prompt, /Fix nav overflow/);
 assert.match(prompt, /https:\/\/example.com\/nav/);
 assert.match(prompt, /http:\/\/127\.0\.0\.1:43127\/uploads\/shot\.png/);
 assert.match(prompt, /```json/);
+assert.match(prompt, /plain human language/);
+assert.match(prompt, /not code, APIs, files/);
 
 const parsed = parseClaudePlanOutput(`
 Here is the plan:
