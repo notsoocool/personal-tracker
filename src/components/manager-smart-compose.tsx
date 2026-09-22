@@ -37,8 +37,7 @@ export function ManagerSmartCompose({
   const [draft, setDraft] = useState<ShapedInboxDraft | null>(null);
   const [urlError, setUrlError] = useState(false);
   const [pending, startTransition] = useTransition();
-  // Shape wiring lands in Task 5; keep prop used so lint is clean:
-  void aiEnabled;
+  const [shaping, setShaping] = useState(false);
 
   const canSend = useMemo(() => {
     if (!draft?.title.trim()) return false;
@@ -58,6 +57,46 @@ export function ManagerSmartCompose({
     }
     onError(null);
     applyDraft(draftFromCompose({ text: compose, chipId }));
+  }
+
+  async function shapeThis() {
+    if (!compose.trim()) {
+      onError("Write a short note first.");
+      return;
+    }
+    onMessage(null);
+    setShaping(true);
+    try {
+      const res = await fetch("/api/smart/shape-inbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, text: compose, chipId }),
+      });
+      let data: { draft?: ShapedInboxDraft; error?: string };
+      try {
+        data = await res.json();
+      } catch {
+        onError("Couldn't reach polish — using local preview.");
+        applyDraft(draftFromCompose({ text: compose, chipId }));
+        return;
+      }
+      if (res.ok && data.draft) {
+        onError(null);
+        applyDraft(data.draft);
+        return;
+      }
+      if ((res.status === 502 || res.status === 503) && data.draft) {
+        applyDraft(data.draft);
+        onError(
+          data.error || "Couldn't polish — edit and send anyway.",
+        );
+        return;
+      }
+      onError(data.error || "Couldn't polish — using local preview.");
+      applyDraft(draftFromCompose({ text: compose, chipId }));
+    } finally {
+      setShaping(false);
+    }
   }
 
   function send() {
@@ -151,8 +190,13 @@ export function ManagerSmartCompose({
           Preview
         </Button>
         {aiEnabled ? (
-          <Button type="button" variant="outline" disabled>
-            Shape this
+          <Button
+            type="button"
+            variant="outline"
+            onClick={shapeThis}
+            disabled={pending || shaping}
+          >
+            {shaping ? "Shaping…" : "Shape this"}
           </Button>
         ) : null}
         <Button
