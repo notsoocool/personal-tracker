@@ -41,7 +41,7 @@ curl -X POST http://127.0.0.1:43127/api/plans \
 
 Or send `claudeOutput` with raw plan JSON / markdown instead of structured fields.
 
-Data is stored in local SQLite at `data/tracker.sqlite`. Uploads go to `public/uploads/`.
+Data is stored in local SQLite at `data/tracker.sqlite` (gitignored). A fresh DB only bootstraps the active project label and a manager link token — **Inbox, Plans, and Tasks start empty**. Uploads go to `public/uploads/`.
 
 ## Scripts
 

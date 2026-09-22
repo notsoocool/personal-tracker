@@ -91,7 +91,7 @@ export function getDb() {
   `);
 
   migrateTasksWorkPlatform(db);
-  seedIfEmpty(db);
+  ensureBootstrap(db);
   return db;
 }
 
@@ -104,7 +104,8 @@ function migrateTasksWorkPlatform(database: Database.Database) {
   }
 }
 
-function seedIfEmpty(database: Database.Database) {
+/** First-run bootstrap only: active project + manager link. Never seeds inbox/plans/tasks. */
+function ensureBootstrap(database: Database.Database) {
   const row = database.prepare("SELECT COUNT(*) AS c FROM projects").get() as {
     c: number;
   };
