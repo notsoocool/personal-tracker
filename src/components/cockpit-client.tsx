@@ -277,7 +277,7 @@ export function CockpitClient({
           <TodaySection
             title="Needs triage"
             count={newInbox.length}
-            empty="Inbox is clear. When your manager drops a todo or review, it shows up here."
+            empty="Nothing waiting. When your manager sends an ask on the secret link, it shows up here to plan."
             delay="enter-up-delay-1"
             accent
           >
@@ -346,7 +346,7 @@ export function CockpitClient({
           <TodaySection
             title="Up next"
             count={readyTasks.length}
-            empty="No ready tasks. Plan an inbox item or unblock work."
+            empty="No ready work yet. Plan an inbox ask or unblock something."
             delay="enter-up-delay-3"
           >
             {readyTasks.map((task) => (
@@ -389,7 +389,7 @@ export function CockpitClient({
           {inbox.length === 0 ? (
             <EmptyState
               title="Inbox is empty"
-              body="When your manager adds a todo or review on the secret link, it lands here."
+              body="Manager asks land here first. Use Plan this, then paste the plan JSON back."
             />
           ) : (
             inbox.map((item) => (
@@ -480,7 +480,7 @@ export function CockpitClient({
           {plans.length === 0 ? (
             <EmptyState
               title="No plans yet"
-              body="Use Plan this on an inbox item, then paste the JSON back."
+              body="Plans appear after you paste plan JSON from an inbox item."
             />
           ) : (
             plans.map((plan) => {

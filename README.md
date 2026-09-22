@@ -18,9 +18,13 @@ Optional env (create `.env.local`):
 ```bash
 OWNER_PASSWORD=tracker-dev
 SESSION_SECRET=change-me
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 ## How it works
+
+The manager link uses compose plus Flit chips; optional **Shape** appears when `OPENAI_API_KEY` is set.
 
 1. Sign in at `/login` → **Today** home (`/cockpit`).
 2. **Needs triage** shows new manager todos/reviews. **Plan this** copies a `/superpowers` prompt that works in **Cursor or Claude**.
