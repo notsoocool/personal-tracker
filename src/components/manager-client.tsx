@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import {
   managerAddReviewAction,
   managerAddTodoAction,
@@ -8,15 +8,9 @@ import {
   managerUpdateInboxAction,
 } from "@/lib/actions";
 import type { InboxItem, Plan, Task, TaskCounts } from "@/lib/types";
+import { PlatformChip } from "@/components/platform-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,23 +54,87 @@ export function ManagerClient({
   const [editing, setEditing] = useState<InboxItem | null>(null);
 
   const openInbox = inbox.filter((i) => i.status === "new");
+  const doing = useMemo(
+    () => tasks.filter((t) => t.status === "doing"),
+    [tasks],
+  );
+  const waiting = useMemo(
+    () =>
+      tasks.filter(
+        (t) => t.status === "blocked" || t.status === "ready",
+      ),
+    [tasks],
+  );
+  const doneRecently = useMemo(
+    () =>
+      tasks
+        .filter((t) => t.status === "done")
+        .slice()
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .slice(0, 8),
+    [tasks],
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6">
-      <header className="border-b border-border pb-6">
-        <p className="text-sm font-medium text-muted-foreground">
+    <div className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+      <header className="enter-up glass-panel rounded-2xl px-5 py-5">
+        <p className="text-xs font-medium uppercase tracking-[0.2em] text-cyan">
           Manager link
         </p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-          {projectName} progress
+        <h1 className="font-display mt-1 text-3xl font-semibold tracking-tight text-glow">
+          {projectName} story
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Drop todos and reviews. Edit or delete while they’re still new.
-          Watch Ready / Doing / Done update as work moves.
+          What’s in progress, what’s waiting on you, and what finished —
+          plus drop todos and reviews.
         </p>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <section className="enter-up enter-up-delay-1 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StoryColumn
+          title="In progress"
+          empty="Nothing actively being worked."
+          accent="cyan"
+        >
+          {doing.map((task) => (
+            <StoryTask key={task.id} task={task} plans={plans} />
+          ))}
+        </StoryColumn>
+        <StoryColumn
+          title="Waiting on you"
+          empty="No open asks right now."
+          accent="amber"
+        >
+          {openInbox.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-xl border border-warning/25 bg-warning/5 px-3 py-2.5"
+            >
+              <div className="mb-1 flex flex-wrap gap-1.5">
+                <Badge variant="outline">{item.type}</Badge>
+                <Badge variant="secondary">needs plan</Badge>
+              </div>
+              <p className="text-sm font-medium">{item.title}</p>
+            </div>
+          ))}
+          {waiting
+            .filter((t) => t.status === "blocked")
+            .map((task) => (
+              <StoryTask key={task.id} task={task} plans={plans} />
+            ))}
+        </StoryColumn>
+        <StoryColumn
+          title="Done recently"
+          empty="No completed tasks yet."
+          accent="green"
+        >
+          {doneRecently.map((task) => (
+            <StoryTask key={task.id} task={task} plans={plans} />
+          ))}
+        </StoryColumn>
+      </section>
+
+      <section className="enter-up enter-up-delay-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {(
           [
             ["Ready", counts.ready],
@@ -85,143 +143,134 @@ export function ManagerClient({
             ["Blocked", counts.blocked],
           ] as const
         ).map(([label, value]) => (
-          <div
-            key={label}
-            className="rounded-lg border border-border bg-card px-4 py-3"
-          >
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          <div key={label} className="glass-panel rounded-xl px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
               {label}
             </p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+            <p className="mt-1 font-display text-2xl font-semibold tabular-nums text-ice">
+              {value}
+            </p>
           </div>
         ))}
       </section>
 
-      <Tabs defaultValue="todo">
-        <TabsList>
+      <Tabs defaultValue="todo" className="enter-up enter-up-delay-3">
+        <TabsList className="glass-panel">
           <TabsTrigger value="todo">Add todo</TabsTrigger>
           <TabsTrigger value="review">Add review</TabsTrigger>
-          <TabsTrigger value="progress">Progress</TabsTrigger>
+          <TabsTrigger value="progress">Inbox & plans</TabsTrigger>
         </TabsList>
 
         <TabsContent value="todo" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Add a todo</CardTitle>
-              <CardDescription>
-                Lands in the owner inbox for {projectName}.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form
-                className="space-y-4"
-                action={(fd) => {
-                  setMessage(null);
-                  setError(null);
-                  startTransition(async () => {
-                    const result = await managerAddTodoAction(token, fd);
-                    if (result?.error) {
-                      setError(result.error);
-                      return;
-                    }
-                    setMessage("Todo added.");
-                    (
-                      document.getElementById("todo-form") as HTMLFormElement | null
-                    )?.reset();
-                  });
-                }}
-                id="todo-form"
-              >
-                <div className="space-y-2">
-                  <Label htmlFor="todo-title">Title</Label>
-                  <Input id="todo-title" name="title" required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="todo-notes">Notes (optional)</Label>
-                  <Textarea id="todo-notes" name="notes" rows={3} />
-                </div>
-                <Button type="submit" disabled={pending}>
-                  {pending ? "Sending…" : "Submit todo"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+          <article className="glass-panel rounded-2xl p-5">
+            <h2 className="font-display text-lg font-semibold">Add a todo</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Lands in the owner inbox for {projectName}.
+            </p>
+            <form
+              className="mt-4 space-y-4"
+              action={(fd) => {
+                setMessage(null);
+                setError(null);
+                startTransition(async () => {
+                  const result = await managerAddTodoAction(token, fd);
+                  if (result?.error) {
+                    setError(result.error);
+                    return;
+                  }
+                  setMessage("Todo added.");
+                  (
+                    document.getElementById(
+                      "todo-form",
+                    ) as HTMLFormElement | null
+                  )?.reset();
+                });
+              }}
+              id="todo-form"
+            >
+              <div className="space-y-2">
+                <Label htmlFor="todo-title">Title</Label>
+                <Input id="todo-title" name="title" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="todo-notes">Notes (optional)</Label>
+                <Textarea id="todo-notes" name="notes" rows={3} />
+              </div>
+              <Button type="submit" disabled={pending}>
+                {pending ? "Sending…" : "Submit todo"}
+              </Button>
+            </form>
+          </article>
         </TabsContent>
 
         <TabsContent value="review" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Add a review</CardTitle>
-              <CardDescription>
-                Include the exact page URL on the live site. Screenshot optional.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form
-                className="space-y-4"
-                id="review-form"
-                action={(fd) => {
-                  setMessage(null);
-                  setError(null);
-                  startTransition(async () => {
-                    const result = await managerAddReviewAction(token, fd);
-                    if (result?.error) {
-                      setError(result.error);
-                      return;
-                    }
-                    setMessage("Review added.");
-                    (
-                      document.getElementById(
-                        "review-form",
-                      ) as HTMLFormElement | null
-                    )?.reset();
-                  });
-                }}
-              >
-                <div className="space-y-2">
-                  <Label htmlFor="review-title">Title</Label>
-                  <Input id="review-title" name="title" required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="review-url">Page / section URL</Label>
-                  <Input
-                    id="review-url"
-                    name="pageUrl"
-                    type="url"
-                    placeholder="https://…"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="review-notes">Notes</Label>
-                  <Textarea id="review-notes" name="notes" rows={4} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="review-shot">Screenshot (optional)</Label>
-                  <Input
-                    id="review-shot"
-                    name="screenshot"
-                    type="file"
-                    accept="image/*"
-                  />
-                </div>
-                <Button type="submit" disabled={pending}>
-                  {pending ? "Sending…" : "Submit review"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+          <article className="glass-panel rounded-2xl p-5">
+            <h2 className="font-display text-lg font-semibold">Add a review</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Include the exact page URL. Screenshot optional.
+            </p>
+            <form
+              className="mt-4 space-y-4"
+              id="review-form"
+              action={(fd) => {
+                setMessage(null);
+                setError(null);
+                startTransition(async () => {
+                  const result = await managerAddReviewAction(token, fd);
+                  if (result?.error) {
+                    setError(result.error);
+                    return;
+                  }
+                  setMessage("Review added.");
+                  (
+                    document.getElementById(
+                      "review-form",
+                    ) as HTMLFormElement | null
+                  )?.reset();
+                });
+              }}
+            >
+              <div className="space-y-2">
+                <Label htmlFor="review-title">Title</Label>
+                <Input id="review-title" name="title" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="review-url">Page / section URL</Label>
+                <Input
+                  id="review-url"
+                  name="pageUrl"
+                  type="url"
+                  placeholder="https://…"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="review-notes">Notes</Label>
+                <Textarea id="review-notes" name="notes" rows={4} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="review-shot">Screenshot (optional)</Label>
+                <Input
+                  id="review-shot"
+                  name="screenshot"
+                  type="file"
+                  accept="image/*"
+                />
+              </div>
+              <Button type="submit" disabled={pending}>
+                {pending ? "Sending…" : "Submit review"}
+              </Button>
+            </form>
+          </article>
         </TabsContent>
 
         <TabsContent value="progress" className="mt-4 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Open inbox</CardTitle>
-              <CardDescription>
-                New items you can still edit or delete until they’re planned.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
+          <article className="glass-panel rounded-2xl p-5">
+            <h2 className="font-display text-lg font-semibold">Open inbox</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Edit or delete while still new / unplanned.
+            </p>
+            <div className="mt-4 space-y-3">
               {openInbox.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No open inbox items.
@@ -230,7 +279,7 @@ export function ManagerClient({
                 openInbox.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-md border border-border px-3 py-3"
+                    className="rounded-xl border border-border/60 bg-muted/20 px-3 py-3"
                   >
                     <div className="mb-1 flex flex-wrap gap-2">
                       <Badge variant="outline">{item.type}</Badge>
@@ -238,7 +287,7 @@ export function ManagerClient({
                     </div>
                     <p className="font-medium">{item.title}</p>
                     {item.notes ? (
-                      <p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
                         {item.notes}
                       </p>
                     ) : null}
@@ -247,7 +296,7 @@ export function ManagerClient({
                         href={item.page_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-1 inline-block text-sm underline underline-offset-4"
+                        className="mt-1 inline-block text-sm text-cyan underline underline-offset-4"
                       >
                         {item.page_url}
                       </a>
@@ -286,17 +335,15 @@ export function ManagerClient({
                   </div>
                 ))
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </article>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Plans</CardTitle>
-              <CardDescription>
-                Task counts and status breakdown per plan.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
+          <article className="glass-panel rounded-2xl p-5">
+            <h2 className="font-display text-lg font-semibold">Plans</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Live task counts from the cockpit.
+            </p>
+            <div className="mt-4 space-y-3">
               {plans.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No plans yet.</p>
               ) : (
@@ -311,7 +358,7 @@ export function ManagerClient({
                   return (
                     <div
                       key={plan.id}
-                      className="rounded-md border border-border px-3 py-3"
+                      className="rounded-xl border border-border/60 bg-muted/20 px-3 py-3"
                     >
                       <div className="mb-1 flex flex-wrap gap-2">
                         <Badge variant="outline">{plan.status}</Badge>
@@ -325,11 +372,12 @@ export function ManagerClient({
                         {planTasks.map((task) => (
                           <li
                             key={task.id}
-                            className="flex justify-between gap-2"
+                            className="flex items-center justify-between gap-2"
                           >
                             <span>{task.title}</span>
-                            <span className="shrink-0 capitalize">
-                              {task.status}
+                            <span className="flex shrink-0 items-center gap-2">
+                              <PlatformChip platform={task.work_platform} />
+                              <span className="capitalize">{task.status}</span>
                             </span>
                           </li>
                         ))}
@@ -338,8 +386,8 @@ export function ManagerClient({
                   );
                 })
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </article>
         </TabsContent>
       </Tabs>
 
@@ -349,7 +397,7 @@ export function ManagerClient({
           if (!open) setEditing(null);
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="border-cyan/20 bg-[oklch(0.16_0.04_240/95%)] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit inbox item</DialogTitle>
             <DialogDescription>
@@ -433,7 +481,7 @@ export function ManagerClient({
         </p>
       ) : null}
       {message ? (
-        <p className="text-sm text-foreground" role="status">
+        <p className="text-sm text-ice" role="status">
           {message}
         </p>
       ) : null}
@@ -441,20 +489,77 @@ export function ManagerClient({
   );
 }
 
+function StoryColumn({
+  title,
+  empty,
+  children,
+  accent,
+}: {
+  title: string;
+  empty: string;
+  children: ReactNode;
+  accent: "cyan" | "amber" | "green";
+}) {
+  const border =
+    accent === "cyan"
+      ? "border-cyan/25"
+      : accent === "amber"
+        ? "border-warning/25"
+        : "border-success/25";
+  const childArray = Array.isArray(children)
+    ? children.flat().filter(Boolean)
+    : children
+      ? [children]
+      : [];
+  return (
+    <div className={`glass-panel rounded-2xl border ${border} p-4`}>
+      <h2 className="font-display text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        {title}
+      </h2>
+      <div className="mt-3 space-y-2">
+        {childArray.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{empty}</p>
+        ) : (
+          children
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StoryTask({ task, plans }: { task: Task; plans: Plan[] }) {
+  const plan = plans.find((p) => p.id === task.plan_id);
+  return (
+    <div className="rounded-xl border border-border/50 bg-muted/15 px-3 py-2.5">
+      <div className="mb-1 flex flex-wrap items-center gap-1.5">
+        <PlatformChip platform={task.work_platform} />
+        <Badge variant="secondary" className="capitalize">
+          {task.status}
+        </Badge>
+      </div>
+      <p className="text-sm font-medium">{task.title}</p>
+      <p className="text-[11px] text-muted-foreground">
+        {plan ? plan.title : "Standalone"}
+      </p>
+    </div>
+  );
+}
+
 function StatusBreakdown({ counts }: { counts: TaskCounts }) {
   const total = counts.ready + counts.doing + counts.done + counts.blocked;
   if (total === 0) {
-    return (
-      <p className="mt-2 text-xs text-muted-foreground">No tasks yet</p>
-    );
+    return <p className="mt-2 text-xs text-muted-foreground">No tasks yet</p>;
   }
-  const segments: { key: keyof TaskCounts; label: string; className: string }[] =
-    [
-      { key: "done", label: "Done", className: "bg-foreground" },
-      { key: "doing", label: "Doing", className: "bg-foreground/70" },
-      { key: "ready", label: "Ready", className: "bg-foreground/35" },
-      { key: "blocked", label: "Blocked", className: "bg-muted-foreground/40" },
-    ];
+  const segments: {
+    key: keyof TaskCounts;
+    label: string;
+    className: string;
+  }[] = [
+    { key: "done", label: "Done", className: "bg-success" },
+    { key: "doing", label: "Doing", className: "bg-cyan" },
+    { key: "ready", label: "Ready", className: "bg-cyan/40" },
+    { key: "blocked", label: "Blocked", className: "bg-destructive/70" },
+  ];
   return (
     <div className="mt-2 space-y-1.5">
       <div className="flex h-1.5 overflow-hidden rounded-full bg-muted">

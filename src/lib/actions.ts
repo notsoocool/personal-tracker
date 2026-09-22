@@ -23,9 +23,10 @@ import {
   updateInboxStatus,
   updatePlanStatus,
   updateTaskStatus,
+  updateTaskWorkPlatform,
 } from "./db";
 import { parseClaudePlanOutput } from "./claude-handoff";
-import type { InboxStatus, PlanStatus, TaskStatus } from "./types";
+import type { InboxStatus, PlanStatus, TaskStatus, WorkPlatform } from "./types";
 
 async function requireOwner() {
   if (!(await isOwnerAuthenticated())) {
@@ -56,6 +57,16 @@ export async function regenerateLinkAction() {
 export async function updateTaskStatusAction(taskId: string, status: TaskStatus) {
   await requireOwner();
   updateTaskStatus(taskId, status);
+  revalidatePath("/cockpit");
+  revalidatePath("/m", "layout");
+}
+
+export async function updateTaskPlatformAction(
+  taskId: string,
+  platform: WorkPlatform | null,
+) {
+  await requireOwner();
+  updateTaskWorkPlatform(taskId, platform);
   revalidatePath("/cockpit");
   revalidatePath("/m", "layout");
 }
@@ -94,7 +105,7 @@ export async function promoteInboxAction(formData: FormData) {
 
   let planTitle = String(formData.get("planTitle") || "").trim();
   let planSummary = String(formData.get("planSummary") || "").trim();
-  let tasksRaw = String(formData.get("tasks") || "");
+  const tasksRaw = String(formData.get("tasks") || "");
   let taskTitles = tasksRaw
     .split("\n")
     .map((line) => line.trim())

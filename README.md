@@ -1,6 +1,6 @@
 # Personal Tracker
 
-Your personal cockpit for inbox → plan → tasks. v1 tracks **Flit** as the active project label. Managers use a secret URL (no account).
+Your personal cockpit for **Today → Plan this → Work on Cursor|Claude → Done**. v1 tracks **Flit** as the active project label. Managers use a secret URL (no account).
 
 ## Run locally
 
@@ -22,14 +22,13 @@ SESSION_SECRET=change-me
 
 ## How it works
 
-1. Sign in at `/login` → owner **cockpit** (`/cockpit`).
-2. **Ready** tab is the day queue: Doing / Ready next / Blocked.
-3. Copy the **manager link** from the cockpit header (`/m/<token>`).
-4. Manager adds todos / reviews (notes + page URL; optional screenshot). They can **edit or delete** items while still `new`.
-5. Owner uses **Plan with Claude** (copies a /superpowers-ready prompt), then **Promote / paste plan** to accept Claude’s JSON into Plan + Tasks.
-6. Task status changes show on the same manager link with per-plan status breakdown.
+1. Sign in at `/login` → **Today** home (`/cockpit`).
+2. **Needs triage** shows new manager todos/reviews. **Plan this** copies a `/superpowers` prompt that works in **Cursor or Claude**.
+3. Paste the plan JSON back → Plan + Tasks. Set **Work on: Cursor | Claude** per task.
+4. Today shows Doing / Up next / Blocked with platform chips. Optional filter: Cursor only / Claude only.
+5. Copy the **manager link** (`/m/<token>`). Manager sees a **story** (in progress / waiting / done) and can add todos/reviews; edit/delete while still `new`.
 
-### Claude handoff API (optional)
+### Claude / Cursor handoff API (optional)
 
 Authenticated cookie session (same as cockpit login):
 
@@ -40,7 +39,7 @@ curl -X POST http://127.0.0.1:43127/api/plans \
   -d '{"inboxItemId":"…","title":"…","summary":"…","tasks":["…"]}'
 ```
 
-Or send `claudeOutput` with raw Claude JSON / markdown instead of structured fields.
+Or send `claudeOutput` with raw plan JSON / markdown instead of structured fields.
 
 Data is stored in local SQLite at `data/tracker.sqlite`. Uploads go to `public/uploads/`.
 
@@ -48,4 +47,4 @@ Data is stored in local SQLite at `data/tracker.sqlite`. Uploads go to `public/u
 
 - `npm run dev` — development server on port 43127
 - `npm run build` / `npm start` — production build
-- `npm run test:handoff` — Claude prompt/parse smoke test
+- `npm run test:handoff` — prompt/parse smoke test

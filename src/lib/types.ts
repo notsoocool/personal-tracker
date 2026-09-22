@@ -2,6 +2,7 @@ export type InboxType = "todo" | "review";
 export type InboxStatus = "new" | "planned" | "dismissed";
 export type PlanStatus = "draft" | "active" | "done";
 export type TaskStatus = "ready" | "doing" | "done" | "blocked";
+export type WorkPlatform = "cursor" | "claude";
 
 export type Project = {
   id: string;
@@ -38,6 +39,7 @@ export type Task = {
   title: string;
   notes: string | null;
   status: TaskStatus;
+  work_platform: WorkPlatform | null;
   sort_order: number;
   created_at: string;
 };

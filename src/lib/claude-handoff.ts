@@ -20,6 +20,7 @@ export function buildClaudePlanPrompt(
   const lines = [
     `Plan work for Personal Tracker (active project: ${projectName}).`,
     "",
+    "Run this in Cursor OR Claude — same repo, same /superpowers flow.",
     "Use /superpowers (or equivalent planning) to turn this inbox item into a plan + actionable tasks.",
     "Return JSON only, matching this shape:",
     "",

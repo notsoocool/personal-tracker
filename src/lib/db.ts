@@ -13,6 +13,7 @@ import type {
   Task,
   TaskCounts,
   TaskStatus,
+  WorkPlatform,
 } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -75,6 +76,7 @@ export function getDb() {
       title TEXT NOT NULL,
       notes TEXT,
       status TEXT NOT NULL DEFAULT 'ready',
+      work_platform TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
@@ -88,8 +90,18 @@ export function getDb() {
     );
   `);
 
+  migrateTasksWorkPlatform(db);
   seedIfEmpty(db);
   return db;
+}
+
+function migrateTasksWorkPlatform(database: Database.Database) {
+  const cols = database.prepare("PRAGMA table_info(tasks)").all() as {
+    name: string;
+  }[];
+  if (!cols.some((c) => c.name === "work_platform")) {
+    database.exec("ALTER TABLE tasks ADD COLUMN work_platform TEXT");
+  }
 }
 
 function seedIfEmpty(database: Database.Database) {
@@ -357,6 +369,7 @@ export function createTask(input: {
   title: string;
   notes?: string | null;
   status?: TaskStatus;
+  workPlatform?: WorkPlatform | null;
   sortOrder?: number;
 }): Task {
   const task: Task = {
@@ -366,14 +379,15 @@ export function createTask(input: {
     title: input.title,
     notes: input.notes ?? null,
     status: input.status ?? "ready",
+    work_platform: input.workPlatform ?? null,
     sort_order: input.sortOrder ?? 0,
     created_at: now(),
   };
   getDb()
     .prepare(
       `INSERT INTO tasks
-        (id, project_id, plan_id, title, notes, status, sort_order, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, project_id, plan_id, title, notes, status, work_platform, sort_order, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       task.id,
@@ -382,6 +396,7 @@ export function createTask(input: {
       task.title,
       task.notes,
       task.status,
+      task.work_platform,
       task.sort_order,
       task.created_at,
     );
@@ -392,6 +407,23 @@ export function updateTaskStatus(idValue: string, status: TaskStatus) {
   getDb()
     .prepare("UPDATE tasks SET status = ? WHERE id = ?")
     .run(status, idValue);
+}
+
+export function updateTaskWorkPlatform(
+  idValue: string,
+  platform: WorkPlatform | null,
+) {
+  getDb()
+    .prepare("UPDATE tasks SET work_platform = ? WHERE id = ?")
+    .run(platform, idValue);
+}
+
+export function getTask(idValue: string): Task | null {
+  return (
+    (getDb().prepare("SELECT * FROM tasks WHERE id = ?").get(idValue) as
+      | Task
+      | undefined) ?? null
+  );
 }
 
 export function taskCounts(projectId: string): TaskCounts {
