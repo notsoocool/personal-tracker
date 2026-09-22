@@ -94,6 +94,9 @@ export function ManagerSmartCompose({
       }
       onError(data.error || "Couldn't polish — using local preview.");
       applyDraft(draftFromCompose({ text: compose, chipId }));
+    } catch {
+      onError("Couldn't reach polish — using local preview.");
+      applyDraft(draftFromCompose({ text: compose, chipId }));
     } finally {
       setShaping(false);
     }
