@@ -6,7 +6,8 @@
     "dev": "next dev --hostname 127.0.0.1 --port 43127",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 43127",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:handoff": "npx --yes tsx scripts/test-claude-handoff.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -28,6 +29,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "playwright": "^1.63.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

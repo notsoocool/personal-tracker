@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   createStandaloneTaskAction,
   logoutAction,
@@ -10,6 +10,10 @@ import {
   updatePlanStatusAction,
   updateTaskStatusAction,
 } from "@/lib/actions";
+import {
+  buildClaudePlanPrompt,
+  parseClaudePlanOutput,
+} from "@/lib/claude-handoff";
 import type { InboxItem, Plan, Task, TaskCounts } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +48,14 @@ type Props = {
 
 const TASK_STATUSES = ["ready", "doing", "done", "blocked"] as const;
 
+function countForPlan(tasks: Task[], planId: string): TaskCounts {
+  const counts: TaskCounts = { ready: 0, doing: 0, done: 0, blocked: 0 };
+  for (const t of tasks) {
+    if (t.plan_id === planId) counts[t.status] += 1;
+  }
+  return counts;
+}
+
 export function CockpitClient({
   projectName,
   managerPath,
@@ -53,11 +65,28 @@ export function CockpitClient({
   counts,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [promptCopiedId, setPromptCopiedId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [promoteError, setPromoteError] = useState<string | null>(null);
   const [openPromoteId, setOpenPromoteId] = useState<string | null>(null);
+  const [claudePaste, setClaudePaste] = useState("");
+  const [planTitle, setPlanTitle] = useState("");
+  const [planSummary, setPlanSummary] = useState("");
+  const [planTasks, setPlanTasks] = useState("");
 
   const newInbox = inbox.filter((i) => i.status === "new");
+  const readyTasks = useMemo(
+    () => tasks.filter((t) => t.status === "ready"),
+    [tasks],
+  );
+  const doingTasks = useMemo(
+    () => tasks.filter((t) => t.status === "doing"),
+    [tasks],
+  );
+  const blockedTasks = useMemo(
+    () => tasks.filter((t) => t.status === "blocked"),
+    [tasks],
+  );
 
   function copyLink() {
     const url = `${window.location.origin}${managerPath}`;
@@ -65,6 +94,44 @@ export function CockpitClient({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  function copyClaudePrompt(item: InboxItem) {
+    const prompt = buildClaudePlanPrompt(
+      item,
+      projectName,
+      window.location.origin,
+    );
+    void navigator.clipboard.writeText(prompt).then(() => {
+      setPromptCopiedId(item.id);
+      setTimeout(() => setPromptCopiedId(null), 2000);
+    });
+  }
+
+  function openPromote(item: InboxItem) {
+    setOpenPromoteId(item.id);
+    setPromoteError(null);
+    setClaudePaste("");
+    setPlanTitle(item.title);
+    setPlanSummary(item.notes ?? "");
+    setPlanTasks("");
+  }
+
+  function applyClaudePaste(raw: string) {
+    setClaudePaste(raw);
+    const parsed = parseClaudePlanOutput(raw);
+    if (!parsed) {
+      setPromoteError(
+        raw.trim()
+          ? "Could not parse yet — keep pasting full JSON with title, summary, tasks[]."
+          : null,
+      );
+      return;
+    }
+    setPromoteError(null);
+    setPlanTitle(parsed.title);
+    setPlanSummary(parsed.summary);
+    setPlanTasks(parsed.tasks.join("\n"));
   }
 
   return (
@@ -120,8 +187,9 @@ export function CockpitClient({
         ))}
       </section>
 
-      <Tabs defaultValue="inbox">
+      <Tabs defaultValue="ready">
         <TabsList>
+          <TabsTrigger value="ready">Ready</TabsTrigger>
           <TabsTrigger value="inbox">
             Inbox
             {newInbox.length > 0 ? (
@@ -133,6 +201,48 @@ export function CockpitClient({
           <TabsTrigger value="plans">Plans</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="ready" className="mt-4 space-y-6">
+          <div className="rounded-lg border border-border bg-card px-4 py-3">
+            <p className="text-sm font-medium">Today's focus</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Day-oriented queue — what’s next, what’s blocked, what you’re
+              already doing. Not a calendar.
+            </p>
+          </div>
+
+          <ReadyColumn
+            title="Doing now"
+            empty="Nothing in progress. Pull something from Ready."
+            tasks={doingTasks}
+            plans={plans}
+            pending={pending}
+            onStatus={(id, status) =>
+              startTransition(() => updateTaskStatusAction(id, status))
+            }
+          />
+          <ReadyColumn
+            title="Ready next"
+            empty="No ready tasks. Promote an inbox item or unblock work."
+            tasks={readyTasks}
+            plans={plans}
+            pending={pending}
+            highlight
+            onStatus={(id, status) =>
+              startTransition(() => updateTaskStatusAction(id, status))
+            }
+          />
+          <ReadyColumn
+            title="Blocked"
+            empty="Nothing blocked."
+            tasks={blockedTasks}
+            plans={plans}
+            pending={pending}
+            onStatus={(id, status) =>
+              startTransition(() => updateTaskStatusAction(id, status))
+            }
+          />
+        </TabsContent>
 
         <TabsContent value="inbox" className="mt-4 space-y-4">
           {inbox.length === 0 ? (
@@ -186,22 +296,33 @@ export function CockpitClient({
                 </CardHeader>
                 {item.status === "new" ? (
                   <CardContent className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copyClaudePrompt(item)}
+                    >
+                      {promptCopiedId === item.id
+                        ? "Prompt copied"
+                        : "Plan with Claude"}
+                    </Button>
                     <Dialog
                       open={openPromoteId === item.id}
                       onOpenChange={(open) => {
-                        setOpenPromoteId(open ? item.id : null);
-                        setPromoteError(null);
+                        if (open) openPromote(item);
+                        else setOpenPromoteId(null);
                       }}
                     >
                       <DialogTrigger
-                        render={<Button size="sm">Promote to plan</Button>}
+                        render={
+                          <Button size="sm">Promote / paste plan</Button>
+                        }
                       />
-                      <DialogContent className="sm:max-w-lg">
+                      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
                         <DialogHeader>
                           <DialogTitle>Promote to plan + tasks</DialogTitle>
                           <DialogDescription>
-                            Turn this inbox item into an active plan with child
-                            tasks for {projectName}.
+                            Paste Claude’s plan output, or fill the fields
+                            manually. Marks this inbox item planned.
                           </DialogDescription>
                         </DialogHeader>
                         <form
@@ -223,13 +344,34 @@ export function CockpitClient({
                             value={item.id}
                           />
                           <div className="space-y-2">
+                            <Label htmlFor={`claude-paste-${item.id}`}>
+                              Paste Claude plan (optional)
+                            </Label>
+                            <Textarea
+                              id={`claude-paste-${item.id}`}
+                              name="claudePaste"
+                              value={claudePaste}
+                              onChange={(e) => applyClaudePaste(e.target.value)}
+                              placeholder={
+                                '{\n  "title": "…",\n  "summary": "…",\n  "tasks": ["…"]\n}'
+                              }
+                              rows={6}
+                              className="font-mono text-xs"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Tip: use Plan with Claude first, run /superpowers
+                              in Cursor, then paste the JSON back here.
+                            </p>
+                          </div>
+                          <div className="space-y-2">
                             <Label htmlFor={`plan-title-${item.id}`}>
                               Plan title
                             </Label>
                             <Input
                               id={`plan-title-${item.id}`}
                               name="planTitle"
-                              defaultValue={item.title}
+                              value={planTitle}
+                              onChange={(e) => setPlanTitle(e.target.value)}
                               required
                             />
                           </div>
@@ -240,7 +382,8 @@ export function CockpitClient({
                             <Textarea
                               id={`plan-summary-${item.id}`}
                               name="planSummary"
-                              defaultValue={item.notes ?? ""}
+                              value={planSummary}
+                              onChange={(e) => setPlanSummary(e.target.value)}
                               rows={3}
                             />
                           </div>
@@ -251,9 +394,13 @@ export function CockpitClient({
                             <Textarea
                               id={`tasks-${item.id}`}
                               name="tasks"
-                              placeholder={"Investigate issue\nShip fix\nVerify on live"}
+                              value={planTasks}
+                              onChange={(e) => setPlanTasks(e.target.value)}
+                              placeholder={
+                                "Investigate issue\nShip fix\nVerify on live"
+                              }
                               rows={5}
-                              required
+                              required={!claudePaste.trim()}
                             />
                           </div>
                           {promoteError ? (
@@ -293,15 +440,20 @@ export function CockpitClient({
             />
           ) : (
             plans.map((plan) => {
-              const planTasks = tasks.filter((t) => t.plan_id === plan.id);
+              const planTasksList = tasks.filter((t) => t.plan_id === plan.id);
+              const breakdown = countForPlan(tasks, plan.id);
+              const total =
+                breakdown.ready +
+                breakdown.doing +
+                breakdown.done +
+                breakdown.blocked;
               return (
                 <Card key={plan.id}>
                   <CardHeader>
                     <div className="mb-2 flex flex-wrap gap-2">
                       <Badge variant="outline">{plan.status}</Badge>
                       <Badge variant="secondary">
-                        {planTasks.length} task
-                        {planTasks.length === 1 ? "" : "s"}
+                        {breakdown.done}/{total} done
                       </Badge>
                     </div>
                     <CardTitle className="text-lg">{plan.title}</CardTitle>
@@ -310,6 +462,7 @@ export function CockpitClient({
                         {plan.summary}
                       </CardDescription>
                     ) : null}
+                    <StatusBreakdown counts={breakdown} />
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex flex-wrap gap-2">
@@ -330,9 +483,9 @@ export function CockpitClient({
                         </Button>
                       ))}
                     </div>
-                    {planTasks.length > 0 ? (
+                    {planTasksList.length > 0 ? (
                       <ul className="space-y-2 border-t border-border pt-3">
-                        {planTasks.map((task) => (
+                        {planTasksList.map((task) => (
                           <li
                             key={task.id}
                             className="flex items-center justify-between gap-3 text-sm"
@@ -438,7 +591,125 @@ export function CockpitClient({
 
       <p className="pb-8 text-xs text-muted-foreground">
         Manager path: <code className="rounded bg-muted px-1">{managerPath}</code>
+        {" · "}
+        API: <code className="rounded bg-muted px-1">POST /api/plans</code>
       </p>
+    </div>
+  );
+}
+
+function ReadyColumn({
+  title,
+  empty,
+  tasks,
+  plans,
+  pending,
+  highlight,
+  onStatus,
+}: {
+  title: string;
+  empty: string;
+  tasks: Task[];
+  plans: Plan[];
+  pending: boolean;
+  highlight?: boolean;
+  onStatus: (id: string, status: (typeof TASK_STATUSES)[number]) => void;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {tasks.length}
+        </span>
+      </div>
+      {tasks.length === 0 ? (
+        <p
+          className={`rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground ${
+            highlight ? "border-foreground/20 bg-muted/40" : "border-border"
+          }`}
+        >
+          {empty}
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {tasks.map((task) => {
+            const plan = plans.find((p) => p.id === task.plan_id);
+            return (
+              <li
+                key={task.id}
+                className={`rounded-lg border bg-card px-4 py-3 ${
+                  highlight ? "border-foreground/25" : "border-border"
+                }`}
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium">{task.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {plan ? plan.title : "Standalone"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {TASK_STATUSES.map((next) => (
+                      <Button
+                        key={next}
+                        size="sm"
+                        disabled={pending}
+                        variant={task.status === next ? "default" : "outline"}
+                        onClick={() => onStatus(task.id, next)}
+                      >
+                        {next}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function StatusBreakdown({ counts }: { counts: TaskCounts }) {
+  const total = counts.ready + counts.doing + counts.done + counts.blocked;
+  if (total === 0) {
+    return (
+      <p className="mt-3 text-xs text-muted-foreground">No tasks yet</p>
+    );
+  }
+  const segments: { key: keyof TaskCounts; label: string; className: string }[] =
+    [
+      { key: "done", label: "Done", className: "bg-foreground" },
+      { key: "doing", label: "Doing", className: "bg-foreground/70" },
+      { key: "ready", label: "Ready", className: "bg-foreground/35" },
+      { key: "blocked", label: "Blocked", className: "bg-muted-foreground/40" },
+    ];
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex h-2 overflow-hidden rounded-full bg-muted">
+        {segments.map((s) => {
+          const n = counts[s.key];
+          if (!n) return null;
+          return (
+            <div
+              key={s.key}
+              className={s.className}
+              style={{ width: `${(n / total) * 100}%` }}
+              title={`${s.label}: ${n}`}
+            />
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        {segments.map((s) => (
+          <span key={s.key}>
+            {s.label}{" "}
+            <span className="tabular-nums text-foreground">{counts[s.key]}</span>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

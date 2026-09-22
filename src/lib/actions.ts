@@ -11,6 +11,7 @@ import {
 import {
   createInboxItem,
   createTask,
+  deleteInboxItem,
   getActiveManagerLink,
   getActiveProject,
   getInboxItem,
@@ -18,10 +19,12 @@ import {
   promoteInboxToPlan,
   regenerateManagerLink,
   saveUpload,
+  updateInboxItem,
   updateInboxStatus,
   updatePlanStatus,
   updateTaskStatus,
 } from "./db";
+import { parseClaudePlanOutput } from "./claude-handoff";
 import type { InboxStatus, PlanStatus, TaskStatus } from "./types";
 
 async function requireOwner() {
@@ -87,13 +90,28 @@ export async function createStandaloneTaskAction(formData: FormData) {
 export async function promoteInboxAction(formData: FormData) {
   await requireOwner();
   const inboxItemId = String(formData.get("inboxItemId") || "");
-  const planTitle = String(formData.get("planTitle") || "").trim();
-  const planSummary = String(formData.get("planSummary") || "").trim();
-  const tasksRaw = String(formData.get("tasks") || "");
-  const taskTitles = tasksRaw
+  const claudePaste = String(formData.get("claudePaste") || "").trim();
+
+  let planTitle = String(formData.get("planTitle") || "").trim();
+  let planSummary = String(formData.get("planSummary") || "").trim();
+  let tasksRaw = String(formData.get("tasks") || "");
+  let taskTitles = tasksRaw
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+
+  if (claudePaste) {
+    const parsed = parseClaudePlanOutput(claudePaste);
+    if (!parsed) {
+      return {
+        error:
+          "Could not parse Claude plan. Paste JSON with title, summary, and tasks[].",
+      };
+    }
+    planTitle = parsed.title;
+    planSummary = parsed.summary;
+    taskTitles = parsed.tasks;
+  }
 
   if (!inboxItemId || !planTitle) {
     return { error: "Plan title is required" };
@@ -104,6 +122,9 @@ export async function promoteInboxAction(formData: FormData) {
 
   const item = getInboxItem(inboxItemId);
   if (!item) return { error: "Inbox item not found" };
+  if (item.status !== "new") {
+    return { error: "Inbox item is already planned or dismissed" };
+  }
 
   promoteInboxToPlan({
     inboxItemId,
@@ -173,4 +194,70 @@ export async function getManagerUrlPath() {
   await requireOwner();
   const link = getActiveManagerLink();
   return `/m/${link.token}`;
+}
+
+/** Manager may edit own submissions while still new (unplanned). */
+export async function managerUpdateInboxAction(
+  token: string,
+  formData: FormData,
+) {
+  const link = getManagerLinkByToken(token);
+  if (!link) return { error: "Invalid or revoked link" };
+
+  const inboxId = String(formData.get("inboxId") || "");
+  const title = String(formData.get("title") || "").trim();
+  const notes = String(formData.get("notes") || "").trim();
+  const pageUrl = String(formData.get("pageUrl") || "").trim();
+  const file = formData.get("screenshot");
+
+  const item = getInboxItem(inboxId);
+  if (!item || item.project_id !== link.project_id) {
+    return { error: "Inbox item not found" };
+  }
+  if (item.status !== "new") {
+    return { error: "Only new (unplanned) items can be edited" };
+  }
+  if (!title) return { error: "Title required" };
+  if (item.type === "review" && !pageUrl) {
+    return { error: "Page URL required for reviews" };
+  }
+
+  let screenshotUrl: string | null | undefined = undefined;
+  if (file && file instanceof File && file.size > 0) {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    screenshotUrl = saveUpload(file.name || "screenshot.png", bytes);
+  }
+
+  updateInboxItem(inboxId, {
+    title,
+    notes: notes || null,
+    pageUrl: pageUrl || null,
+    screenshotUrl,
+  });
+
+  revalidatePath(`/m/${token}`);
+  revalidatePath("/cockpit");
+  return { ok: true };
+}
+
+/** Manager may delete own submissions while still new (unplanned). */
+export async function managerDeleteInboxAction(
+  token: string,
+  inboxId: string,
+) {
+  const link = getManagerLinkByToken(token);
+  if (!link) return { error: "Invalid or revoked link" };
+
+  const item = getInboxItem(inboxId);
+  if (!item || item.project_id !== link.project_id) {
+    return { error: "Inbox item not found" };
+  }
+  if (item.status !== "new") {
+    return { error: "Only new (unplanned) items can be deleted" };
+  }
+
+  deleteInboxItem(inboxId);
+  revalidatePath(`/m/${token}`);
+  revalidatePath("/cockpit");
+  return { ok: true };
 }

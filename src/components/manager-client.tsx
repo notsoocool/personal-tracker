@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { managerAddReviewAction, managerAddTodoAction } from "@/lib/actions";
+import {
+  managerAddReviewAction,
+  managerAddTodoAction,
+  managerDeleteInboxAction,
+  managerUpdateInboxAction,
+} from "@/lib/actions";
 import type { InboxItem, Plan, Task, TaskCounts } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +21,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Props = {
   token: string;
@@ -25,6 +37,14 @@ type Props = {
   tasks: Task[];
   counts: TaskCounts;
 };
+
+function countForPlan(tasks: Task[], planId: string): TaskCounts {
+  const counts: TaskCounts = { ready: 0, doing: 0, done: 0, blocked: 0 };
+  for (const t of tasks) {
+    if (t.plan_id === planId) counts[t.status] += 1;
+  }
+  return counts;
+}
 
 export function ManagerClient({
   token,
@@ -37,6 +57,7 @@ export function ManagerClient({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [editing, setEditing] = useState<InboxItem | null>(null);
 
   const openInbox = inbox.filter((i) => i.status === "new");
 
@@ -50,8 +71,8 @@ export function ManagerClient({
           {projectName} progress
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Drop todos and reviews. Watch Ready / Doing / Done update as work
-          moves.
+          Drop todos and reviews. Edit or delete while they’re still new.
+          Watch Ready / Doing / Done update as work moves.
         </p>
       </header>
 
@@ -104,7 +125,9 @@ export function ManagerClient({
                       return;
                     }
                     setMessage("Todo added.");
-                    (document.getElementById("todo-form") as HTMLFormElement | null)?.reset();
+                    (
+                      document.getElementById("todo-form") as HTMLFormElement | null
+                    )?.reset();
                   });
                 }}
                 id="todo-form"
@@ -147,7 +170,11 @@ export function ManagerClient({
                       return;
                     }
                     setMessage("Review added.");
-                    (document.getElementById("review-form") as HTMLFormElement | null)?.reset();
+                    (
+                      document.getElementById(
+                        "review-form",
+                      ) as HTMLFormElement | null
+                    )?.reset();
                   });
                 }}
               >
@@ -191,7 +218,7 @@ export function ManagerClient({
             <CardHeader>
               <CardTitle className="text-lg">Open inbox</CardTitle>
               <CardDescription>
-                Items waiting for the owner to plan.
+                New items you can still edit or delete until they’re planned.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -203,23 +230,59 @@ export function ManagerClient({
                 openInbox.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-md border border-border px-3 py-2"
+                    className="rounded-md border border-border px-3 py-3"
                   >
-                    <div className="mb-1 flex gap-2">
+                    <div className="mb-1 flex flex-wrap gap-2">
                       <Badge variant="outline">{item.type}</Badge>
                       <Badge variant="secondary">{item.status}</Badge>
                     </div>
                     <p className="font-medium">{item.title}</p>
+                    {item.notes ? (
+                      <p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">
+                        {item.notes}
+                      </p>
+                    ) : null}
                     {item.page_url ? (
                       <a
                         href={item.page_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-sm underline underline-offset-4"
+                        className="mt-1 inline-block text-sm underline underline-offset-4"
                       >
                         {item.page_url}
                       </a>
                     ) : null}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditing(item)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() => {
+                          setMessage(null);
+                          setError(null);
+                          startTransition(async () => {
+                            const result = await managerDeleteInboxAction(
+                              token,
+                              item.id,
+                            );
+                            if (result?.error) {
+                              setError(result.error);
+                              return;
+                            }
+                            setMessage("Deleted.");
+                          });
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
@@ -229,6 +292,9 @@ export function ManagerClient({
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Plans</CardTitle>
+              <CardDescription>
+                Task counts and status breakdown per plan.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {plans.length === 0 ? (
@@ -236,6 +302,12 @@ export function ManagerClient({
               ) : (
                 plans.map((plan) => {
                   const planTasks = tasks.filter((t) => t.plan_id === plan.id);
+                  const breakdown = countForPlan(tasks, plan.id);
+                  const total =
+                    breakdown.ready +
+                    breakdown.doing +
+                    breakdown.done +
+                    breakdown.blocked;
                   return (
                     <div
                       key={plan.id}
@@ -244,14 +316,17 @@ export function ManagerClient({
                       <div className="mb-1 flex flex-wrap gap-2">
                         <Badge variant="outline">{plan.status}</Badge>
                         <Badge variant="secondary">
-                          {planTasks.filter((t) => t.status === "done").length}/
-                          {planTasks.length} done
+                          {breakdown.done}/{total} done
                         </Badge>
                       </div>
                       <p className="font-medium">{plan.title}</p>
+                      <StatusBreakdown counts={breakdown} />
                       <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
                         {planTasks.map((task) => (
-                          <li key={task.id} className="flex justify-between gap-2">
+                          <li
+                            key={task.id}
+                            className="flex justify-between gap-2"
+                          >
                             <span>{task.title}</span>
                             <span className="shrink-0 capitalize">
                               {task.status}
@@ -268,6 +343,90 @@ export function ManagerClient({
         </TabsContent>
       </Tabs>
 
+      <Dialog
+        open={!!editing}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit inbox item</DialogTitle>
+            <DialogDescription>
+              Only available while the item is still new / unplanned.
+            </DialogDescription>
+          </DialogHeader>
+          {editing ? (
+            <form
+              className="space-y-4"
+              action={(fd) => {
+                setMessage(null);
+                setError(null);
+                startTransition(async () => {
+                  const result = await managerUpdateInboxAction(token, fd);
+                  if (result?.error) {
+                    setError(result.error);
+                    return;
+                  }
+                  setMessage("Updated.");
+                  setEditing(null);
+                });
+              }}
+            >
+              <input type="hidden" name="inboxId" value={editing.id} />
+              <div className="space-y-2">
+                <Label htmlFor="edit-title">Title</Label>
+                <Input
+                  id="edit-title"
+                  name="title"
+                  defaultValue={editing.title}
+                  required
+                />
+              </div>
+              {editing.type === "review" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="edit-url">Page / section URL</Label>
+                  <Input
+                    id="edit-url"
+                    name="pageUrl"
+                    type="url"
+                    defaultValue={editing.page_url ?? ""}
+                    required
+                  />
+                </div>
+              ) : (
+                <input type="hidden" name="pageUrl" value="" />
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="edit-notes">Notes</Label>
+                <Textarea
+                  id="edit-notes"
+                  name="notes"
+                  rows={4}
+                  defaultValue={editing.notes ?? ""}
+                />
+              </div>
+              {editing.type === "review" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="edit-shot">
+                    Replace screenshot (optional)
+                  </Label>
+                  <Input
+                    id="edit-shot"
+                    name="screenshot"
+                    type="file"
+                    accept="image/*"
+                  />
+                </div>
+              ) : null}
+              <Button type="submit" disabled={pending}>
+                {pending ? "Saving…" : "Save changes"}
+              </Button>
+            </form>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       {error ? (
         <p className="text-sm text-destructive" role="alert">
           {error}
@@ -278,6 +437,48 @@ export function ManagerClient({
           {message}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function StatusBreakdown({ counts }: { counts: TaskCounts }) {
+  const total = counts.ready + counts.doing + counts.done + counts.blocked;
+  if (total === 0) {
+    return (
+      <p className="mt-2 text-xs text-muted-foreground">No tasks yet</p>
+    );
+  }
+  const segments: { key: keyof TaskCounts; label: string; className: string }[] =
+    [
+      { key: "done", label: "Done", className: "bg-foreground" },
+      { key: "doing", label: "Doing", className: "bg-foreground/70" },
+      { key: "ready", label: "Ready", className: "bg-foreground/35" },
+      { key: "blocked", label: "Blocked", className: "bg-muted-foreground/40" },
+    ];
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-muted">
+        {segments.map((s) => {
+          const n = counts[s.key];
+          if (!n) return null;
+          return (
+            <div
+              key={s.key}
+              className={s.className}
+              style={{ width: `${(n / total) * 100}%` }}
+              title={`${s.label}: ${n}`}
+            />
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        {segments.map((s) => (
+          <span key={s.key}>
+            {s.label}{" "}
+            <span className="tabular-nums text-foreground">{counts[s.key]}</span>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

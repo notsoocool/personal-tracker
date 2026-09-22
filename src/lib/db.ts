@@ -243,6 +243,51 @@ export function updateInboxStatus(idValue: string, status: InboxStatus) {
     .run(status, idValue);
 }
 
+export function updateInboxItem(
+  idValue: string,
+  input: {
+    title: string;
+    notes?: string | null;
+    pageUrl?: string | null;
+    screenshotUrl?: string | null;
+  },
+): InboxItem | null {
+  const existing = getInboxItem(idValue);
+  if (!existing) return null;
+  getDb()
+    .prepare(
+      `UPDATE inbox_items
+       SET title = ?, notes = ?, page_url = ?, screenshot_url = ?
+       WHERE id = ?`,
+    )
+    .run(
+      input.title,
+      input.notes ?? null,
+      input.pageUrl ?? null,
+      input.screenshotUrl ?? existing.screenshot_url,
+      idValue,
+    );
+  return getInboxItem(idValue);
+}
+
+export function deleteInboxItem(idValue: string): boolean {
+  const result = getDb()
+    .prepare("DELETE FROM inbox_items WHERE id = ?")
+    .run(idValue);
+  return result.changes > 0;
+}
+
+export function taskCountsForPlan(planId: string): TaskCounts {
+  const rows = getDb()
+    .prepare(
+      "SELECT status, COUNT(*) AS c FROM tasks WHERE plan_id = ? GROUP BY status",
+    )
+    .all(planId) as { status: TaskStatus; c: number }[];
+  const counts: TaskCounts = { ready: 0, doing: 0, done: 0, blocked: 0 };
+  for (const row of rows) counts[row.status] = row.c;
+  return counts;
+}
+
 export function listPlans(projectId: string): Plan[] {
   return getDb()
     .prepare(
