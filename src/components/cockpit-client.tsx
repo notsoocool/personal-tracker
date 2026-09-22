@@ -58,10 +58,6 @@ export function CockpitClient({
   const [openPromoteId, setOpenPromoteId] = useState<string | null>(null);
 
   const newInbox = inbox.filter((i) => i.status === "new");
-  const managerUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}${managerPath}`
-      : managerPath;
 
   function copyLink() {
     const url = `${window.location.origin}${managerPath}`;
@@ -200,7 +196,7 @@ export function CockpitClient({
                       <DialogTrigger
                         render={<Button size="sm">Promote to plan</Button>}
                       />
-                      <DialogContent className="max-w-lg">
+                      <DialogContent className="sm:max-w-lg">
                         <DialogHeader>
                           <DialogTitle>Promote to plan + tasks</DialogTitle>
                           <DialogDescription>
@@ -441,7 +437,7 @@ export function CockpitClient({
       </Tabs>
 
       <p className="pb-8 text-xs text-muted-foreground">
-        Manager path: <code className="rounded bg-muted px-1">{managerUrl}</code>
+        Manager path: <code className="rounded bg-muted px-1">{managerPath}</code>
       </p>
     </div>
   );
