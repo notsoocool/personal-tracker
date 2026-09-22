@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 43127",
     "lint": "eslint",
-    "test:handoff": "npx --yes tsx scripts/test-claude-handoff.ts"
+    "test:handoff": "npx --yes tsx scripts/test-claude-handoff.ts",
+    "test:smart": "npx --yes tsx scripts/test-smart-compose.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
